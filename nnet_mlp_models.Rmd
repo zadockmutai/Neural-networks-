@@ -1,0 +1,155 @@
+
+```{r}
+library(forecast)
+library(nnet)
+library(caret)
+library(dplyr)
+library(RSNNS)
+library(xts)
+library(NeuralNetTools)
+library(tinytex)
+```
+
+#Reading in the dataset
+
+```{r}
+covid19Dataset <- read.csv("C:/Users/CSA/Downloads/time_series_covid19_confirmed_global_narrow.csv", header=TRUE, comment.char="#")
+head(covid19Dataset)
+
+```
+
+#Selecting Rwandan Dataset
+
+```{r}
+Rwandan.Data <- as.data.frame(covid19Dataset[which(covid19Dataset$Country 
+                                                   =="Rwanda"),])
+head(Rwandan.Data)
+Rwandan.Data <- as.data.frame(cbind(Rwandan.Data$Date, Rwandan.Data$Value))
+colnames(Rwandan.Data) <- c("Date", "Cumm.Value") 
+
+#Reorganising the data set
+Rwandan.Data <- as.data.frame(apply(Rwandan.Data, 2, rev))
+head(Rwandan.Data)
+
+```
+
+#Ploting the Time Series Data
+
+```{r}
+Rwandan.Data$Date <- as.Date(Rwandan.Data$Date,format = "%m/%d/%Y")
+plot(Rwandan.Data$Date , Rwandan.Data$Cumm.Value, type='l', 
+     main="COVID-19 CUMMULATIVE CONFIRMED CASES IN RWANDA SO FAR", 
+     xlab="TIME", ylab = "CONFIRMED CASES")
+
+```
+
+#Creating Xt, Xt_1,Xt_2 and Xt_3
+
+```{r}
+Xt <- Rwandan.Data$Cumm.Value
+Xt_1 <- lag(Xt, n = 1L)
+Xt_2<- lag(Xt, n = 2L)
+Xt_3<- lag(Xt, n = 3L)
+ts.data <- as.data.frame(cbind(Xt,Xt_1,Xt_2,Xt_3))
+head(ts.data)
+
+```
+
+#Removing the leading Zero entries
+
+```{r}
+ts.data <- ts.data[53:length(Xt), ]
+head(ts.data)
+
+```
+
+#Partioning the Dataset
+
+```{r}
+Training.Data <- ts.data[1:190,]
+View(Training.Data)
+Testing.Data <- ts.data[191:length(ts.data$Xt),]
+View(Testing.Data)
+
+```
+
+#Fitting the nnet model with 2 hidden nodes in 1 hidden layer
+
+```{r}
+#Fitting the nnet model with 2 hidden nodes in 1 hidden layer 
+nnet.model <-
+  nnet(as.numeric(Training.Data$Xt)/max(as.numeric(Training.Data$Xt)) ~
+         as.numeric(Training.Data$Xt_1) + as.numeric(Training.Data$Xt_2) +
+         as.numeric(Training.Data$Xt_3), size = 2, rang = 0.1, decay = 5e-04, maxit =
+         2000, trace = FALSE)
+
+```
+
+#Summary Statistics
+
+```{r}
+
+plotnet(nnet.model)
+summary(nnet.model)
+```
+
+#Fitting the mlp model with 2 hidden nodes in 1 hidden layer
+
+```{r}
+mlp.model <-
+  mlp(as.numeric(Training.Data$Xt_1)/max(as.numeric(Training.Data$Xt)) +
+        as.numeric(Training.Data$Xt_2)/max(as.numeric(Training.Data$Xt)) +
+        as.numeric(Training.Data$Xt_3)/max(as.numeric(Training.Data$Xt)), 
+      as.numeric(Training.Data$Xt)/max(as.numeric(Training.Data$Xt)), size =
+        c(7,5,3), rang = 0.1, decay = 5e-04, maxit = 2000, trace = FALSE)
+
+```
+
+#Summary Statistics
+
+```{r}
+plotnet(mlp.model)
+
+summary(mlp.model)
+
+```
+
+# Estimates
+
+```{r}
+estimates <- nnet.model$fitted.values*max(as.numeric(Training.Data$Xt))
+
+estimatesmlp <- mlp.model$fitted.values*max(as.numeric(Training.Data$Xt))
+```
+
+#Insample Plots
+
+```{r}
+plot(Rwandan.Data$Date[53:242] , Rwandan.Data$Cumm.Value[53:242], type='l', 
+ main="COVID-19 CUMMULATIVE CONFIRMED CASES IN RWANDA SO FAR", 
+xlab="TIME", ylab = "CONFIRMED CASES")
+lines(Rwandan.Data$Date[53:242],estimatesmlp,col="blue")
+lines(Rwandan.Data$Date[53:242],estimates,col="red")
+legend("topleft", c("True Data", "Nnet Model", "MLP Model"), lty = 1, col =
+c("black", "red", "blue"))
+
+
+```
+
+```{r}
+rsquare <- function(y_hat, y){
+ y_bar <- mean(y)
+ numerator <- (sum((y-y_bar)*(y_hat-y_bar)))^2
+ denominator <- (sum((y-y_bar)^2))*(sum((y_hat-y_bar)^2))
+ return (numerator/denominator)
+}
+rsquare.nnet <- rsquare(estimates, as.numeric(Training.Data$Xt))
+rsquare.nnet
+
+
+rsquaremlp <- rsquare(estimatesmlp, as.numeric(Training.Data$Xt))
+rsquaremlp
+
+
+
+```
